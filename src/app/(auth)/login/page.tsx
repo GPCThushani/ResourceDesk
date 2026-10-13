@@ -1,10 +1,13 @@
 
+import { Suspense } from "react";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
+
 import { auth } from "@/auth";
 import LoginForm from "@/components/ui/LoginForm";
 
-export default async function LoginPage() {
+async function LoginContent() {
+  // Authentication requires request-time rendering.
   await connection();
 
   const session = await auth();
@@ -37,5 +40,21 @@ export default async function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#F5F7FA]">
+          <p className="text-sm text-slate-500">
+            Loading ResourceDesk...
+          </p>
+        </main>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

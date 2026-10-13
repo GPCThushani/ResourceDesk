@@ -1,38 +1,50 @@
 
+import { Suspense } from "react";
 import { connection } from "next/server";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
 
-export default async function ProtectedLayout({
+import AppShell from "@/components/layout/AppShell";
+import { getCurrentUser } from "@/server/services/current-user";
+
+async function AuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Wait for a real request before accessing authentication.
   await connection();
 
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    redirect("/login");
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      status: true,
-    },
-  });
-
-  if (!user || user.status !== "ACTIVE") {
-    redirect("/login");
-  }
+  const user = await getCurrentUser();
 
   return (
-    <div className="min-h-screen bg-[#F5F7FA]">
+    <AppShell
+      user={{
+        name: user.name,
+        role: user.role,
+        department: user.department
+          ? { name: user.department.name }
+          : null,
+      }}
+    >
       {children}
-    </div>
+    </AppShell>
+  );
+}
+
+export default function ProtectedLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#F5F7FA]">
+          <p className="text-sm text-slate-500">
+            Loading workspace...
+          </p>
+        </div>
+      }
+    >
+      <AuthenticatedLayout>{children}</AuthenticatedLayout>
+    </Suspense>
   );
 }
