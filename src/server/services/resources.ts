@@ -1,28 +1,38 @@
 
 import "server-only";
 
+import { Prisma } from "@prisma/client";
+import { notFound } from "next/navigation";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/server/services/current-user";
-import { notFound } from "next/navigation";
-import { Prisma } from "@prisma/client";
+
+// =====================================================
+// 1. Get Accessible Resources
+// =====================================================
 
 export async function getAccessibleResources() {
   const user = await getCurrentUser();
 
+  const visibility: Prisma.ResourceWhereInput[] = [
+    { accessScope: "ORGANIZATION" },
+  ];
+
+  // Employees and department heads can access
+  // resources belonging to their own department.
+  if (user.departmentId) {
+    visibility.push({
+      accessScope: "DEPARTMENT",
+      ownerDepartmentId: user.departmentId,
+    });
+  }
+
   return prisma.resource.findMany({
-    where: {
-      OR: [
-        { accessScope: "ORGANIZATION" },
-        ...(user.departmentId
-          ? [
-              {
-                accessScope: "DEPARTMENT" as const,
-                ownerDepartmentId: user.departmentId,
-              },
-            ]
-          : []),
-      ],
-    },
+    where:
+      user.role === "ADMIN"
+        ? {}
+        : { OR: visibility },
+
     select: {
       id: true,
       resourceCode: true,
@@ -34,12 +44,14 @@ export async function getAccessibleResources() {
       status: true,
       accessScope: true,
       requiresApproval: true,
+
       ownerDepartment: {
         select: {
           name: true,
         },
       },
     },
+
     orderBy: [
       { category: "asc" },
       { name: "asc" },
@@ -47,15 +59,19 @@ export async function getAccessibleResources() {
   });
 }
 
+// Type used by the ResourceDirectory component.
 export type ResourceDirectoryItem = Awaited<
   ReturnType<typeof getAccessibleResources>
 >[number];
 
+// =====================================================
+// 2. Get Accessible Resource by ID
+// =====================================================
 
 export async function getAccessibleResourceById(id: string) {
   const user = await getCurrentUser();
 
-  // Validate the UUID before querying PostgreSQL.
+  // Validate UUID before querying PostgreSQL.
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -67,6 +83,7 @@ export async function getAccessibleResourceById(id: string) {
     { accessScope: "ORGANIZATION" },
   ];
 
+  // Department-specific access for non-admin users.
   if (user.departmentId) {
     visibility.push({
       accessScope: "DEPARTMENT",
@@ -77,8 +94,14 @@ export async function getAccessibleResourceById(id: string) {
   const resource = await prisma.resource.findFirst({
     where: {
       id,
-      OR: visibility,
+
+      // Administrators can view every resource.
+      // Other users must satisfy visibility rules.
+      ...(user.role === "ADMIN"
+        ? {}
+        : { OR: visibility }),
     },
+
     select: {
       id: true,
       resourceCode: true,
@@ -92,6 +115,7 @@ export async function getAccessibleResourceById(id: string) {
       requiresApproval: true,
       createdAt: true,
       updatedAt: true,
+
       ownerDepartment: {
         select: {
           name: true,
@@ -101,6 +125,7 @@ export async function getAccessibleResourceById(id: string) {
     },
   });
 
+  // Prevent access to missing or unauthorized resources.
   if (!resource) {
     notFound();
   }
