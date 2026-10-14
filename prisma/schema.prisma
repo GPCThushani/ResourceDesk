@@ -8,6 +8,90 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model Department {
+  id             String     @id @default(uuid()) @db.Uuid
+  name           String     @unique
+  createdAt      DateTime   @default(now()) @db.Timestamptz(6)
+  departmentCode String     @unique
+  headId         String?    @unique @db.Uuid
+  head           User?      @relation("DepartmentHead", fields: [headId], references: [id])
+  resources      Resource[] @relation("ResourceOwnerDepartment")
+  users          User[]     @relation("DepartmentMembers")
+}
+
+model User {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  name                 String
+  email                String                   @unique
+  passwordHash         String
+  role                 Role                     @default(EMPLOYEE)
+  departmentId         String?                  @db.Uuid
+  createdAt            DateTime                 @default(now()) @db.Timestamptz(6)
+  employeeId           String?                  @unique
+  status               UserStatus               @default(ACTIVE)
+  headedDepartment     Department?              @relation("DepartmentHead")
+  assignedReservations Reservation[]            @relation("ReservationApprover")
+  reviewedReservations Reservation[]            @relation("ReservationReviewer")
+  reservations         Reservation[]            @relation("ReservationRequester")
+  department           Department?              @relation("DepartmentMembers", fields: [departmentId], references: [id])
+  activationTokens     AccountActivationToken[]
+}
+
+model AccountActivationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Resource {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String
+  category          String
+  description       String?
+  location          String?
+  capacity          Int?
+  status            ResourceStatus @default(ACTIVE)
+  requiresApproval  Boolean        @default(false)
+  ownerDepartmentId String?        @db.Uuid
+  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(6)
+  accessScope       AccessScope    @default(ORGANIZATION)
+  resourceCode      String         @unique
+  reservations      Reservation[]
+  ownerDepartment   Department?    @relation("ResourceOwnerDepartment", fields: [ownerDepartmentId], references: [id])
+}
+
+model Reservation {
+  id               String            @id @default(uuid()) @db.Uuid
+  purpose          String
+  startTime        DateTime          @db.Timestamptz(6)
+  endTime          DateTime          @db.Timestamptz(6)
+  status           ReservationStatus @default(PENDING)
+  rejectionReason  String?
+  userId           String            @db.Uuid
+  resourceId       String            @db.Uuid
+  reviewedById     String?           @db.Uuid
+  reviewedAt       DateTime?         @db.Timestamptz(6)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(6)
+  approverId       String?           @db.Uuid
+  bookingReference String            @unique
+  approver         User?             @relation("ReservationApprover", fields: [approverId], references: [id])
+  resource         Resource          @relation(fields: [resourceId], references: [id])
+  reviewedBy       User?             @relation("ReservationReviewer", fields: [reviewedById], references: [id])
+  user             User              @relation("ReservationRequester", fields: [userId], references: [id])
+
+  @@index([resourceId, startTime, endTime])
+  @@index([userId, createdAt])
+  @@index([approverId, status])
+}
+
 enum Role {
   EMPLOYEE
   DEPARTMENT_HEAD
@@ -15,6 +99,7 @@ enum Role {
 }
 
 enum UserStatus {
+  INVITED
   ACTIVE
   INACTIVE
 }
@@ -35,79 +120,4 @@ enum ReservationStatus {
   CONFIRMED
   REJECTED
   CANCELLED
-}
-
-model Department {
-  id             String   @id @default(uuid()) @db.Uuid
-  departmentCode String   @unique
-  name           String   @unique
-  headId         String?  @unique @db.Uuid
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-
-  head      User?      @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
-  users     User[]     @relation("DepartmentMembers")
-  resources Resource[] @relation("ResourceOwnerDepartment")
-}
-
-model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  employeeId   String?    @unique
-  name         String
-  email        String     @unique
-  passwordHash String
-  role         Role       @default(EMPLOYEE)
-  status       UserStatus @default(ACTIVE)
-  departmentId String?    @db.Uuid
-  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
-
-  department           Department?   @relation("DepartmentMembers", fields: [departmentId], references: [id], onDelete: SetNull)
-  headedDepartment     Department?   @relation("DepartmentHead")
-  reservations         Reservation[] @relation("ReservationRequester")
-  assignedReservations Reservation[] @relation("ReservationApprover")
-  reviewedReservations Reservation[] @relation("ReservationReviewer")
-}
-
-model Resource {
-  id                String         @id @default(uuid()) @db.Uuid
-  resourceCode      String         @unique
-  name              String
-  category          String
-  description       String?
-  location          String?
-  capacity          Int?
-  status            ResourceStatus @default(ACTIVE)
-  accessScope       AccessScope    @default(ORGANIZATION)
-  requiresApproval  Boolean        @default(false)
-  ownerDepartmentId String?        @db.Uuid
-  createdAt         DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime       @updatedAt @db.Timestamptz(6)
-
-  ownerDepartment Department?   @relation("ResourceOwnerDepartment", fields: [ownerDepartmentId], references: [id], onDelete: SetNull)
-  reservations    Reservation[]
-}
-
-model Reservation {
-  id               String            @id @default(uuid()) @db.Uuid
-  bookingReference String            @unique
-  purpose          String
-  startTime        DateTime          @db.Timestamptz(6)
-  endTime          DateTime          @db.Timestamptz(6)
-  status           ReservationStatus @default(PENDING)
-  rejectionReason  String?
-
-  userId       String    @db.Uuid
-  resourceId   String    @db.Uuid
-  approverId   String?   @db.Uuid
-  reviewedById String?   @db.Uuid
-  reviewedAt   DateTime? @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
-
-  user       User     @relation("ReservationRequester", fields: [userId], references: [id])
-  resource   Resource @relation(fields: [resourceId], references: [id])
-  approver   User?    @relation("ReservationApprover", fields: [approverId], references: [id], onDelete: SetNull)
-  reviewedBy User?    @relation("ReservationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-
-  @@index([resourceId, startTime, endTime])
-  @@index([userId, createdAt])
-  @@index([approverId, status])
 }

@@ -1,9 +1,12 @@
 
-import { logout } from "@/server/actions/auth";
 import type { Role } from "@prisma/client";
 
 type AppHeaderProps = {
-  user: { name: string; role: Role; department: { name: string } | null };
+  user: {
+    name: string;
+    role: Role;
+    department: { name: string } | null;
+  };
   onMenuClick: () => void;
 };
 
@@ -11,7 +14,7 @@ export default function AppHeader({
   user,
   onMenuClick,
 }: AppHeaderProps) {
-  const roleLabels = {
+  const roleLabels: Record<Role, string> = {
     EMPLOYEE: "Employee",
     DEPARTMENT_HEAD: "Department Head",
     ADMIN: "Administrator",
@@ -24,7 +27,7 @@ export default function AppHeader({
           type="button"
           onClick={onMenuClick}
           aria-label="Open navigation"
-          className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 lg:hidden"
+          className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 lg:hidden"
         >
           Menu
         </button>
@@ -33,30 +36,21 @@ export default function AppHeader({
           <p className="text-sm font-semibold text-[#14263D]">
             Resource Management
           </p>
+
           <p className="text-xs text-slate-500">
             {user.department?.name ?? "Organization"}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold text-slate-900">
-            {user.name}
-          </p>
-          <p className="text-xs text-slate-500">
-            {roleLabels[user.role]}
-          </p>
-        </div>
+      <div className="text-right">
+        <p className="text-sm font-semibold text-slate-900">
+          {user.name}
+        </p>
 
-        <form action={logout}>
-          <button
-            type="submit"
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Sign out
-          </button>
-        </form>
+        <p className="text-xs text-slate-500">
+          {roleLabels[user.role]}
+        </p>
       </div>
     </header>
   );

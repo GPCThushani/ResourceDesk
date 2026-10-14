@@ -1,55 +1,84 @@
 
+import { Suspense } from "react";
+import Link from "next/link";
 import { connection } from "next/server";
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/server/services/current-user";
-import { Suspense } from "react";
 
 async function DashboardContent() {
   await connection();
 
   const user = await getCurrentUser();
-
-  const resourceVisibility = [
-    { accessScope: "ORGANIZATION" as const },
-    ...(user.departmentId
-      ? [
-          {
-            accessScope: "DEPARTMENT" as const,
-            ownerDepartmentId: user.departmentId,
-          },
-        ]
-      : []),
-  ];
-
   const now = new Date();
+
+  // Admins can access all resources.
+  // Other users can access organization-wide resources
+  // and resources belonging to their own department.
+  const resourceVisibility: Prisma.ResourceWhereInput =
+    user.role === "ADMIN"
+      ? {}
+      : {
+          OR: [
+            { accessScope: "ORGANIZATION" },
+            ...(user.departmentId
+              ? [
+                  {
+                    accessScope: "DEPARTMENT" as const,
+                    ownerDepartmentId: user.departmentId,
+                  },
+                ]
+              : []),
+          ],
+        };
+
+  // Pending request count depends on the user's role.
+  const pendingRequestFilter: Prisma.ReservationWhereInput =
+    user.role === "ADMIN"
+      ? {
+          status: "PENDING",
+        }
+      : user.role === "DEPARTMENT_HEAD"
+        ? {
+            status: "PENDING",
+            approverId: user.id,
+          }
+        : {
+            status: "PENDING",
+            userId: user.id,
+          };
 
   const [
     activeResources,
     myReservations,
     pendingRequests,
-    upcomingBookings,
-    recentReservations,
+    myUpcomingBookings,
+    sharedUpcomingBookings,
   ] = await Promise.all([
+    // Active resources accessible to the current user.
     prisma.resource.count({
       where: {
         status: "ACTIVE",
-        OR: resourceVisibility,
+        ...resourceVisibility,
       },
     }),
 
+    // Total reservations created by the current user.
     prisma.reservation.count({
       where: {
         userId: user.id,
       },
     }),
 
+    // Employees: their pending reservations.
+    // Department Heads: requests awaiting their approval.
+    // Admins: all pending requests.
     prisma.reservation.count({
-      where: {
-        userId: user.id,
-        status: "PENDING",
-      },
+      where: pendingRequestFilter,
     }),
 
+    // Current user's confirmed upcoming bookings.
     prisma.reservation.count({
       where: {
         userId: user.id,
@@ -59,30 +88,60 @@ async function DashboardContent() {
         },
       },
     }),
-
+    
     prisma.reservation.findMany({
       where: {
-        userId: user.id,
+        status: "CONFIRMED",
+        endTime: {
+          gt: now,
+        },
+        resource: resourceVisibility,
       },
+
       select: {
         id: true,
         bookingReference: true,
         startTime: true,
         endTime: true,
-        status: true,
+
         resource: {
           select: {
+            id: true,
             name: true,
             resourceCode: true,
+            category: true,
+            location: true,
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 5,
+
+      orderBy: [
+        { startTime: "asc" },
+        { id: "asc" },
+      ],
+
+      take: 10,
     }),
   ]);
+
+  const pendingCard =
+    user.role === "DEPARTMENT_HEAD"
+      ? {
+          label: "Pending Approvals",
+          value: pendingRequests,
+          description: "Requests awaiting your review",
+        }
+      : user.role === "ADMIN"
+        ? {
+            label: "Pending Approvals",
+            value: pendingRequests,
+            description: "Requests awaiting approval system-wide",
+          }
+        : {
+            label: "Pending Requests",
+            value: pendingRequests,
+            description: "Your requests awaiting approval",
+          };
 
   const statistics = [
     {
@@ -95,46 +154,48 @@ async function DashboardContent() {
       value: myReservations,
       description: "Total reservation requests",
     },
+    pendingCard,
     {
-      label: "Pending Requests",
-      value: pendingRequests,
-      description: "Awaiting approval",
-    },
-    {
-      label: "Upcoming Bookings",
-      value: upcomingBookings,
-      description: "Confirmed future bookings",
+      label: "My Upcoming Bookings",
+      value: myUpcomingBookings,
+      description: "Your confirmed future bookings",
     },
   ];
 
   const formatDateTime = (date: Date) =>
-    date.toLocaleString("en-GB", {
+    new Intl.DateTimeFormat("en-GB", {
       timeZone: "Asia/Colombo",
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-
-  const statusStyles = {
-    PENDING: "bg-amber-50 text-amber-800",
-    CONFIRMED: "bg-green-50 text-green-800",
-    REJECTED: "bg-red-50 text-red-800",
-    CANCELLED: "bg-slate-100 text-slate-700",
-  };
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date);
 
   return (
     <div className="space-y-8">
-      {/* Page heading */}
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#14263D]">
-          Dashboard
-        </h1>
+      {/* Page Heading */}
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#14263D]">
+            Dashboard
+          </h1>
 
-        <p className="mt-2 text-sm text-slate-600">
-          Welcome back, {user.name}. Here is your workspace overview.
-        </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Welcome back, {user.name}. Here is your workspace overview.
+          </p>
+        </div>
+
+        <Link
+          href="/reservations/new"
+          className="inline-flex items-center rounded-md bg-[#14263D] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#223D5C]"
+        >
+          + New Reservation
+        </Link>
       </section>
 
-      {/* Dashboard statistics */}
+      {/* Dashboard Statistics */}
       <section
         aria-label="Dashboard statistics"
         className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4"
@@ -159,110 +220,163 @@ async function DashboardContent() {
         ))}
       </section>
 
-      {/* Recent reservations */}
+      {/* Upcoming Resource Bookings */}
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-6 py-5">
-          <h2 className="text-lg font-semibold text-[#14263D]">
-            Recent Reservations
-          </h2>
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-[#14263D]">
+              Upcoming Resource Bookings
+            </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Your five most recently created reservation requests.
-          </p>
+            <p className="mt-1 text-sm text-slate-500">
+              The next 10 confirmed bookings for resources you can access,
+              including reservations made by other employees.
+            </p>
+          </div>
+
+          <Link
+            href="/resources"
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-[#14263D] transition hover:bg-slate-50"
+          >
+            Browse Resources
+          </Link>
         </div>
 
-        {recentReservations.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-sm font-medium text-slate-700">
-              No reservations found
-            </p>
+        {sharedUpcomingBookings.length === 0 ? (
+          <div className="px-6 py-14 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#14263D"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect
+                  x="3"
+                  y="5"
+                  width="18"
+                  height="16"
+                  rx="2"
+                />
+                <path d="M16 3v4M8 3v4M3 10h18" />
+              </svg>
+            </div>
+
+            <h3 className="mt-4 text-sm font-semibold text-slate-800">
+              No upcoming confirmed bookings
+            </h3>
 
             <p className="mt-2 text-sm text-slate-500">
-              Your reservation history will appear here once you
-              create your first booking.
+              There are currently no upcoming confirmed reservations
+              for resources you can access.
             </p>
+
+            <Link
+              href="/reservations/new"
+              className="mt-5 inline-flex rounded-md bg-[#14263D] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#223D5C]"
+            >
+              Make a Reservation
+            </Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th
-                    scope="col"
-                    className="px-6 py-4 font-medium"
-                  >
-                    Booking Reference
-                  </th>
-
-                  <th
-                    scope="col"
-                    className="px-6 py-4 font-medium"
-                  >
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50">
+                <tr className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th scope="col" className="px-6 py-4">
                     Resource
                   </th>
 
-                  <th
-                    scope="col"
-                    className="px-6 py-4 font-medium"
-                  >
+                  <th scope="col" className="px-6 py-4">
+                    Category
+                  </th>
+
+                  <th scope="col" className="px-6 py-4">
+                    Location
+                  </th>
+
+                  <th scope="col" className="px-6 py-4">
                     Start Time
                   </th>
 
-                  <th
-                    scope="col"
-                    className="px-6 py-4 font-medium"
-                  >
+                  <th scope="col" className="px-6 py-4">
                     End Time
+                  </th>
+
+                  <th scope="col" className="px-6 py-4">
+                    Status
                   </th>
 
                   <th
                     scope="col"
-                    className="px-6 py-4 font-medium"
+                    className="px-6 py-4 text-right"
                   >
-                    Status
+                    Action
                   </th>
                 </tr>
               </thead>
 
-              <tbody>
-                {recentReservations.map((reservation) => (
+              <tbody className="divide-y divide-slate-100">
+                {sharedUpcomingBookings.map((reservation) => (
                   <tr
                     key={reservation.id}
-                    className="border-t border-slate-100 hover:bg-slate-50"
+                    className="align-top transition-colors hover:bg-slate-50"
                   >
-                    <td className="px-6 py-4 font-medium text-[#14263D]">
-                      {reservation.bookingReference}
-                    </td>
-
+                    {/* Resource */}
                     <td className="px-6 py-4">
-                      <p className="font-medium text-slate-800">
+                      <Link
+                        href={`/resources/${reservation.resource.id}`}
+                        className="font-semibold text-[#14263D] hover:underline"
+                      >
                         {reservation.resource.name}
-                      </p>
+                      </Link>
 
                       <p className="mt-1 text-xs text-slate-500">
                         {reservation.resource.resourceCode}
                       </p>
                     </td>
 
-                    <td className="whitespace-nowrap px-6 py-4 text-slate-600">
+                    {/* Category */}
+                    <td className="px-6 py-4 text-slate-700">
+                      {reservation.resource.category}
+                    </td>
+
+                    {/* Location */}
+                    <td className="px-6 py-4 text-slate-700">
+                      {reservation.resource.location ?? "Not specified"}
+                    </td>
+
+                    {/* Start Time */}
+                    <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                       {formatDateTime(reservation.startTime)}
                     </td>
 
-                    <td className="whitespace-nowrap px-6 py-4 text-slate-600">
+                    {/* End Time */}
+                    <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                       {formatDateTime(reservation.endTime)}
                     </td>
 
+                    {/* Status */}
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-md px-3 py-1 text-xs font-medium ${
-                          statusStyles[reservation.status]
-                        }`}
-                      >
-                        {reservation.status.charAt(0) +
-                          reservation.status
-                            .slice(1)
-                            .toLowerCase()}
+                      <span className="inline-flex rounded-md bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
+                        Confirmed
                       </span>
+                    </td>
+
+                    {/* Action */}
+                    <td className="px-6 py-4 text-right">
+                      <Link
+                        href={`/resources/${reservation.resource.id}`}
+                        className="inline-flex whitespace-nowrap rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-[#14263D] hover:bg-slate-50"
+                      >
+                        View Resource
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -270,6 +384,14 @@ async function DashboardContent() {
             </table>
           </div>
         )}
+
+        <div className="border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <p className="text-xs leading-5 text-slate-500">
+            Only confirmed bookings are displayed. Pending approval
+            requests do not reserve a time slot. Availability is
+            verified again when a reservation is submitted.
+          </p>
+        </div>
       </section>
     </div>
   );

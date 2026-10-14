@@ -20,6 +20,7 @@ export async function submitReservation(
     revalidatePath("/reservations");
     revalidatePath("/approvals");
     revalidatePath("/resources");
+    revalidatePath("/reservations/new");
 
     if (result.reservationId) {
       revalidatePath(`/reservations/${result.reservationId}`);

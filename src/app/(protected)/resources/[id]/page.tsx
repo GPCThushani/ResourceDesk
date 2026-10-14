@@ -13,10 +13,10 @@ type ResourceDetailsPageProps = {
 async function ResourceDetailsContent({
   params,
 }: ResourceDetailsPageProps) {
-  // Next.js 16: Dynamic rendering inside Suspense
+  // Next.js 16: Dynamic rendering inside Suspense.
   await connection();
 
-  // Resolve dynamic route params inside Suspense
+  // Resolve dynamic route params inside Suspense.
   const { id } = await params;
 
   const resource = await getAccessibleResourceById(id);
@@ -64,7 +64,8 @@ async function ResourceDetailsContent({
     },
     {
       label: "Owning Department",
-      value: resource.ownerDepartment?.name ?? "Organization",
+      value:
+        resource.ownerDepartment?.name ?? "Organization",
     },
     {
       label: "Approval Requirement",
@@ -150,11 +151,16 @@ async function ResourceDetailsContent({
 
         {/* Booking Section */}
         {isBookable ? (
-          <ReservationForm
-            resourceId={resource.id}
-            resourceName={resource.name}
-            requiresApproval={resource.requiresApproval}
-          />
+          <div
+            id="reservation-form"
+            className="min-w-0 scroll-mt-24"
+          >
+            <ReservationForm
+              resourceId={resource.id}
+              resourceName={resource.name}
+              requiresApproval={resource.requiresApproval}
+            />
+          </div>
         ) : (
           <aside className="rounded-lg border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-[#14263D]">

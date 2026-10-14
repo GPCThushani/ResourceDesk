@@ -235,7 +235,7 @@ export default function MyReservationsManager({
             </div>
 
             <Link
-              href="/resources"
+              href="/reservations/new"
               className="rounded-md bg-[#14263D] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#223D5C]"
             >
               + New Reservation

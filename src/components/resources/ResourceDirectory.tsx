@@ -30,8 +30,9 @@ export default function ResourceDirectory({
 
   // Categories are dynamically generated from database records.
   const categories = useMemo(() => {
-    return [...new Set(resources.map((resource) => resource.category))]
-      .sort();
+    return [
+      ...new Set(resources.map((resource) => resource.category)),
+    ].sort();
   }, [resources]);
 
   // Filter resources using search, category, and status.
@@ -72,15 +73,24 @@ export default function ResourceDirectory({
   return (
     <div className="space-y-6">
       {/* Page Heading */}
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#14263D]">
-          Resources
-        </h1>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#14263D]">
+            Resources
+          </h1>
 
-        <p className="mt-2 text-sm text-slate-600">
-          Browse workplace resources, check their status, and review
-          booking requirements.
-        </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Browse workplace resources, check their status, and review
+            booking requirements.
+          </p>
+        </div>
+
+        <Link
+          href="/reservations/new"
+          className="inline-flex items-center rounded-md bg-[#14263D] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#223D5C]"
+        >
+          + New Reservation
+        </Link>
       </section>
 
       {/* Main Directory */}
@@ -227,14 +237,15 @@ export default function ResourceDirectory({
                   </th>
 
                   <th scope="col" className="px-5 py-4 font-medium">
-                    Action
+                    Actions
                   </th>
                 </tr>
               </thead>
 
               <tbody>
                 {filteredResources.map((resource) => {
-                  const isBookable = resource.status === "ACTIVE";
+                  const isBookable =
+                    resource.status === "ACTIVE";
 
                   return (
                     <tr
@@ -317,7 +328,7 @@ export default function ResourceDirectory({
                             "Department"}
                       </td>
 
-                      {/* View Details */}
+                      {/* Resource Actions */}
                       <td className="px-5 py-4">
                         <Link
                           href={`/resources/${resource.id}`}
