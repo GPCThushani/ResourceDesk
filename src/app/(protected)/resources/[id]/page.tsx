@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
 
+import ReservationForm from "@/components/reservations/ReservationForm";
 import { getAccessibleResourceById } from "@/server/services/resources";
 
 type ResourceDetailsPageProps = {
@@ -10,11 +11,13 @@ type ResourceDetailsPageProps = {
 };
 
 async function ResourceDetailsContent({
-  id,
-}: {
-  id: string;
-}) {
+  params,
+}: ResourceDetailsPageProps) {
+  // Next.js 16: Dynamic rendering inside Suspense
   await connection();
+
+  // Resolve dynamic route params inside Suspense
+  const { id } = await params;
 
   const resource = await getAccessibleResourceById(id);
 
@@ -73,6 +76,7 @@ async function ResourceDetailsContent({
 
   return (
     <div className="space-y-8">
+      {/* Breadcrumb */}
       <nav aria-label="Breadcrumb">
         <Link
           href="/resources"
@@ -82,6 +86,7 @@ async function ResourceDetailsContent({
         </Link>
       </nav>
 
+      {/* Resource Header */}
       <section className="flex flex-wrap items-start justify-between gap-5">
         <div>
           <p className="text-sm text-slate-500">
@@ -106,7 +111,9 @@ async function ResourceDetailsContent({
         </span>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+      {/* Main Content */}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        {/* Resource Information */}
         <section className="rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-6 py-5">
             <h2 className="text-lg font-semibold text-[#14263D]">
@@ -128,6 +135,7 @@ async function ResourceDetailsContent({
             ))}
           </div>
 
+          {/* Resource Description */}
           <div className="border-t border-slate-200 px-6 py-5">
             <h3 className="text-sm font-semibold text-[#14263D]">
               Description
@@ -140,69 +148,61 @@ async function ResourceDetailsContent({
           </div>
         </section>
 
-        <aside className="h-fit rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-[#14263D]">
-            Reservation Information
-          </h2>
+        {/* Booking Section */}
+        {isBookable ? (
+          <ReservationForm
+            resourceId={resource.id}
+            resourceName={resource.name}
+            requiresApproval={resource.requiresApproval}
+          />
+        ) : (
+          <aside className="rounded-lg border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-[#14263D]">
+              Reservations Unavailable
+            </h2>
 
-          <p className="mt-4 text-sm text-slate-600">
-            {isBookable
-              ? "This resource is active and eligible for reservation requests."
-              : "This resource is currently unavailable for reservations."}
-          </p>
-
-          <div className="mt-5 border-t border-slate-100 pt-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Approval Process
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              This resource cannot currently be booked because
+              its status is{" "}
+              {statusLabels[resource.status].toLowerCase()}.
             </p>
 
-            <p className="mt-2 text-sm text-slate-800">
-              {resource.requiresApproval
-                ? "A designated department head must approve the reservation."
-                : "Reservations do not require manual approval."}
-            </p>
-          </div>
-
-          {isBookable ? (
-            <div className="mt-6 rounded-md bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                Booking will be available in Phase 5
-              </p>
-              <p className="mt-2 text-xs leading-5 text-slate-600">
-                Reservation creation and time-slot availability
-                checks are being implemented next.
-              </p>
+            <div className="mt-5 rounded-md bg-amber-50 p-4 text-sm text-amber-800">
+              Booking will become available when an administrator
+              changes the resource status to Active.
             </div>
-          ) : (
-            <p className="mt-6 rounded-md bg-amber-50 p-4 text-sm text-amber-800">
-              Booking is disabled while this resource is
-              inactive or under maintenance.
-            </p>
-          )}
-        </aside>
+
+            <Link
+              href="/resources"
+              className="mt-6 inline-flex rounded-md border border-slate-300 px-4 py-2.5 text-sm font-medium text-[#14263D] hover:bg-slate-50"
+            >
+              Browse Other Resources
+            </Link>
+          </aside>
+        )}
       </div>
     </div>
   );
 }
 
-export default async function ResourceDetailsPage({
+// Main Page Component
+export default function ResourceDetailsPage({
   params,
 }: ResourceDetailsPageProps) {
-  const { id } = await params;
-
   return (
     <Suspense
       fallback={
         <div className="space-y-6">
           <div className="h-8 w-56 animate-pulse rounded bg-slate-200" />
-          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+
+          <div className="grid gap-6 lg:grid-cols-2">
             <div className="h-96 animate-pulse rounded-lg bg-white" />
-            <div className="h-64 animate-pulse rounded-lg bg-white" />
+            <div className="h-96 animate-pulse rounded-lg bg-white" />
           </div>
         </div>
       }
     >
-      <ResourceDetailsContent id={id} />
+      <ResourceDetailsContent params={params} />
     </Suspense>
   );
 }
